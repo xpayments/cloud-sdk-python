@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 # coding: utf-8
-import inspect
-import requests
+from requests import post
 import hmac
 import hashlib
-import binascii
 import base64
 import json
-import os
 
 XPAYMENTS_SDK_DEBUG_SERVER_HOST = ""
+
 
 class Request:
 
@@ -59,7 +57,7 @@ class Request:
             "Content-Type": "application/json",
         }
 
-        response = requests.post(url, data=request_data, headers=headers, timeout=self.connection_timeout)
+        response = post(url, data=request_data, headers=headers, timeout=self.connection_timeout)
 
         response.raise_for_status()
 
@@ -122,6 +120,7 @@ class Request:
         str
         """
         return "https://" + self.get_server_host() + "/api/" + self.API_VERSION + "/" + controller + "/" + action
+
 
 class Client:
     account = ""

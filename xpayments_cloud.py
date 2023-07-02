@@ -6,13 +6,15 @@ from hmac import new as hmac_new
 from hashlib import sha256
 from exceptions import IllegalArgumentError, JSONProcessingError, UnicodeProcessingError
 from request_params import RequestParams
+from dotenv import dotenv_values
 
-XPAYMENTS_SDK_DEBUG_SERVER_HOST = ""
+config = dotenv_values(".env")
 
 
 class Request:
 
     XP_DOMAIN = "xpayments.com"
+    TEST_SERVER_HOST: str
     API_VERSION = "4.8"
     CONNECTION_TIMEOUT = 120
     account: str
@@ -28,6 +30,7 @@ class Request:
         self.account = str(account)
         self.api_key = str(api_key)
         self.secret_key = str(secret_key)
+        self.TEST_SERVER_HOST = config.get('TEST_SERVER_HOST', '')
 
     def send(self, controller: str, action: str, request_data: dict) -> str:
         """
@@ -75,7 +78,7 @@ class Request:
         """
         Get X-Payments server host
         """
-        return XPAYMENTS_SDK_DEBUG_SERVER_HOST if len(XPAYMENTS_SDK_DEBUG_SERVER_HOST) > 0 \
+        return self.TEST_SERVER_HOST if len(self.TEST_SERVER_HOST) > 0 \
             else f"{self.account}.{self.XP_DOMAIN}"
 
     def get_api_endpoint(self, action: str, controller: str) -> str:

@@ -5,7 +5,7 @@ from base64 import b64encode
 from hmac import new as hmac_new
 from hashlib import sha256
 from exceptions import IllegalArgumentError, JSONProcessingError, UnicodeProcessingError
-from request_params import RequestParams
+from request_params import PaymentRequestParams
 from dotenv import dotenv_values
 
 config = dotenv_values(".env")
@@ -106,21 +106,16 @@ class Client:
         self.secret_key = str(secret_key)
         self.request = Request(account=self.account, api_key=self.api_key, secret_key=self.secret_key)
 
-    def do_pay(self, params: RequestParams, force_save_card: bool = False, force_transaction_type: str = None,
-               force_conf_id: int = None) -> str:
+    def do_pay(self, params: PaymentRequestParams) -> str:
         """
         Process payment
         """
-        params.force_save_card = "Y" if force_save_card else "N"
-        params.force_transaction_type = force_transaction_type
-        params.confId = force_conf_id
         return self.request.send(controller='payment', action='pay', request_data=params.to_dict())
 
-    def do_tokenize_card(self, params: RequestParams, force_conf_id: int = None) -> str:
+    def do_tokenize_card(self, params: PaymentRequestParams) -> str:
         """
         Tokenize card
         """
-        params.confId = force_conf_id
         return self.request.send(controller='payment', action='tokenize_card', request_data=params.to_dict())
 
     def do_rebill(self, xpid: str, ref_id: str, customer_id: str, cart: list, callback_url: str) -> str:

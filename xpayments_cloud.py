@@ -1,244 +1,127 @@
-#!/usr/bin/env python3
-# coding: utf-8
-import inspect
-import requests
-import hmac
-import hashlib
-import binascii
-import base64
-import json
-import os
+from requests import post
+from requests.exceptions import RequestException, HTTPError
+from json import JSONDecodeError, dumps as json_dumps
+from base64 import b64encode
+from hmac import new as hmac_new
+from hashlib import sha256
+from exceptions import IllegalArgumentError, JSONProcessingError, UnicodeProcessingError
+from request_params import PaymentRequestParams
+from dotenv import dotenv_values
 
-XPAYMENTS_SDK_DEBUG_SERVER_HOST = ""
+config = dotenv_values(".env")
+
 
 class Request:
 
     XP_DOMAIN = "xpayments.com"
+    TEST_SERVER_HOST: str
     API_VERSION = "4.8"
-    connection_timeout = 120
-    account = ""
-    api_key = ""
-    secret_key = ""
+    CONNECTION_TIMEOUT = 120
+    account: str
+    api_key: str
+    secret_key: str
 
-    def __init__(self, account, api_key, secret_key):
+    def __init__(self, account: str, api_key: str, secret_key: str) -> None:
         """
         Request constructor
-
-        Parameters
-        ----------
-        account: str
-        api_key: str
-        secret_key: str                    
         """
-        self.account = account
-        self.api_key = api_key
-        self.secret_key = secret_key
+        if not all([len(str(v)) > 0 for v in locals().values() if type(v) is not Request]):
+            raise IllegalArgumentError
+        self.account = str(account)
+        self.api_key = str(api_key)
+        self.secret_key = str(secret_key)
+        self.TEST_SERVER_HOST = config.get('TEST_SERVER_HOST', '')
 
-    def send(self, controller, action, request_data):
+    def send(self, controller: str, action: str, request_data: dict) -> str:
         """
         Send API request to X-Payments Cloud
-
-        Parameters
-        ----------
-        controller: str
-        action: str
-        request_data: list
-
-        Returns
-        -------
-        str
         """
-
-        request_data = json.dumps(request_data)
-
-        url = self.get_api_endpoint(action, controller)
-
+        request = json_dumps(request_data)
+        url = self.get_api_endpoint(action=action, controller=controller)
         headers = {
-            "Authorization": "Basic " + self.get_authorization_header(),
-            "X-Payments-Signature": self.get_signature_header(action, request_data),
+            "Authorization": f"Basic {self.get_authorization_header()}",
+            "X-Payments-Signature": self.get_signature_header(action=action, data=request),
             "Content-Type": "application/json",
         }
-
-        response = requests.post(url, data=request_data, headers=headers, timeout=self.connection_timeout)
-
+        try:
+            response = post(url=url, data=request, headers=headers, timeout=self.CONNECTION_TIMEOUT)
+        except RequestException:
+            raise HTTPError
         response.raise_for_status()
+        try:
+            # print(response.json())
+            return response.json()
+        except JSONDecodeError as ex:
+            raise JSONProcessingError(ex.msg)
 
-        print(response.json())
-
-    def get_authorization_header(self):
+    def get_authorization_header(self) -> str:
         """
         Get Basic HTTP Authorization header
-
-        Returns
-        -------
-        str
         """
+        try:
+            data = f"{self.account}:{self.api_key}".encode()
+            return b64encode(data).decode()
+        except UnicodeEncodeError | UnicodeDecodeError:
+            raise UnicodeProcessingError
 
-        data = "%s:%s" % (self.account, self.api_key)
-        return base64.b64encode(data.encode()).decode()
-
-    def get_signature_header(self, action, data):
+    def get_signature_header(self, action: str, data: str) -> str:
         """
         Get signature header
-
-        Parameters
-        ----------
-        action: str
-        data: str
-
-        Returns
-        -------
-        str
         """
+        try:
+            message = f"{action}{data}".encode()
+            return hmac_new(key=self.secret_key.encode(), msg=message, digestmod=sha256).hexdigest()
+        except UnicodeEncodeError:
+            raise UnicodeProcessingError
 
-        message = action + data
-
-        return hmac.new(self.secret_key.encode(), message.encode(), hashlib.sha256).hexdigest()
-
-    def get_server_host(self):
+    def get_server_host(self) -> str:
         """
         Get X-Payments server host
-
-        Returns
-        -------
-        str
         """
-        if XPAYMENTS_SDK_DEBUG_SERVER_HOST:
-            return XPAYMENTS_SDK_DEBUG_SERVER_HOST
-        else:
-            return self.account + "." + self.XP_DOMAIN
+        return self.TEST_SERVER_HOST if len(self.TEST_SERVER_HOST) > 0 \
+            else f"{self.account}.{self.XP_DOMAIN}"
 
-    def get_api_endpoint(self, action, controller):
+    def get_api_endpoint(self, action: str, controller: str) -> str:
         """
         Get API endpoint
-
-        Parameters
-        ----------
-        action: str
-        controller: str
-
-        Returns
-        -------
-        str
         """
-        return "https://" + self.get_server_host() + "/api/" + self.API_VERSION + "/" + controller + "/" + action
+        return f"https://{self.get_server_host()}/api/{self.API_VERSION}/{controller}/{action}"
+
 
 class Client:
-    account = ""
-    api_key = ""
-    secret_key = ""
 
-    def __init__(self, account, api_key, secret_key):
+    account: str
+    api_key: str
+    secret_key: str
+    request: Request
+
+    def __init__(self, account: str, api_key: str, secret_key: str) -> None:
         """
         Client constructor
-
-        Parameters
-        ----------
-        account: str
-        api_key: str
-        secret_key: str                    
         """
-        self.account = account
-        self.api_key = api_key
-        self.secret_key = secret_key
+        if not all([len(str(v)) > 0 for v in locals().values() if type(v) is not Client]):
+            raise IllegalArgumentError
+        self.account = str(account)
+        self.api_key = str(api_key)
+        self.secret_key = str(secret_key)
+        self.request = Request(account=self.account, api_key=self.api_key, secret_key=self.secret_key)
 
-    def do_pay(self, token, ref_id, customer_id, cart, return_url, callback_url, force_save_card=None, force_transaction_type=None, force_conf_id=0):
+    def do_pay(self, params: PaymentRequestParams) -> str:
         """
-        Processs payment
-
-        Parameters
-        ----------
-        token: str
-        ref_id: str
-        customer_id: str
-        cart: list
-        return_url: str
-        callback_url: str
-        force_save_card: str, optional
-        force_transaction_type: str, optional
-        force_conf_id: str, optional
-
-        Returns
-        -------
-        list
+        Process payment
         """
+        return self.request.send(controller='payment', action='pay', request_data=params.to_dict())
 
-        params = {
-            "token": token,
-            "refId": ref_id,
-            "customerId": customer_id,
-            "cart": cart,
-            "returnUrl": return_url,
-            "callbackUrl": callback_url
-        }
-
-        if force_save_card:
-            params["force_save_card"] = "Y"
-        else:
-            params["force_save_card"] = "N"
-
-        if force_transaction_type:
-            params["force_transaction_type"] = force_transaction_type
-
-        if force_conf_id:
-            params["confId"] = force_conf_id
-
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('payment', 'pay', params)
-
-    def do_tokenize_card(self, token, ref_id, customer_id, cart, return_url, callback_url, force_conf_id=0):
+    def do_tokenize_card(self, params: PaymentRequestParams) -> str:
         """
         Tokenize card
-
-        Parameters
-        ----------
-        token: str
-        ref_id: str
-        customer_id: str
-        cart: list
-        return_url: str
-        callback_url: str
-        force_conf_id: str, optional
-
-        Returns
-        -------
-        list
         """
+        return self.request.send(controller='payment', action='tokenize_card', request_data=params.to_dict())
 
-        params = {
-            "token": token,
-            "refId": ref_id,
-            "customerId": customer_id,
-            "cart": cart,
-            "returnUrl": return_url,
-            "callbackUrl": callback_url
-        }
-
-        if force_conf_id:
-            params["confId"] = force_conf_id
-
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('payment', 'tokenize_card', params)
-
-    def do_rebill(self, xpid, ref_id, customer_id, cart, callback_url):
+    def do_rebill(self, xpid: str, ref_id: str, customer_id: str, cart: list, callback_url: str) -> str:
         """
         Rebill payment (process payment using the saved card)
-
-        Parameters
-        ----------
-        xpid: str
-        ref_id: str
-        customer_id: str
-        cart: list
-        callback_url: str
-
-        Returns
-        -------
-        list
         """
-
         params = {
             "xpid": xpid,
             "refId": ref_id,
@@ -246,320 +129,121 @@ class Client:
             "cart": cart,
             "callbackUrl": callback_url
         }
+        return self.request.send(controller='payment', action='rebill', request_data=params)
 
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('payment', 'rebill', params)
-
-    def do_action(self, action, xpid, amount=0):
+    def do_action(self, action: str, xpid: str, amount: int | None = None) -> str:
         """
         Execute secondary payment action
-
-        Parameters
-        ----------
-        action: str
-            Payment action
-        xpid: str
-            X-Payments payment ID
-        amount: str, optional
-            Amount to capture
-
-        Returns
-        -------
-        list
         """
-
         params = {"xpid": xpid}
-        if 0 < amount:
+        if amount is not None and amount > 0:
             params.amount = amount
+        return self.request.send(controller='payment', action=action, request_data=params)
 
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('payment', action, params)
-
-    def do_capture(self, xpid, amount=0):
+    def do_capture(self, xpid: str, amount: int) -> str:
         """
         Capture payment
-
-        Parameters
-        ----------
-        xpid: str
-            X-Payments payment ID
-        amount: str, optional
-            Amount to capture
-
-        Returns
-        -------
-        list
         """
+        return self.do_action(action='capture', xpid=xpid, amount=amount)
 
-        return self.do_action("capture", xpid, amount)
-
-    def do_void(self, xpid, amount=0):
+    def do_void(self, xpid: str, amount: int) -> str:
         """
         Void payment
-
-        Parameters
-        ----------
-        xpid: str
-            X-Payments payment ID
-        amount: str, optional
-            Amount to void
-
-        Returns
-        -------
-        list
         """
+        return self.do_action(action='void', xpid=xpid, amount=amount)
 
-        return self.do_action("void", xpid, amount)
-
-    def do_refund(self, xpid, amount=0):
+    def do_refund(self, xpid: str, amount: int) -> str:
         """
         Refund payment
-
-        Parameters
-        ----------
-        xpid: str
-            X-Payments payment ID
-        amount: str, optional
-            Amount to refund
-
-        Returns
-        -------
-        list
         """
+        return self.do_action(action='refund', xpid=xpid, amount=amount)
 
-        return self.do_action("refund", xpid, amount)
-
-    def do_continue(self, xpid):
+    def do_continue(self, xpid: str) -> str:
         """
         Continue payment
-
-        Parameters
-        ----------
-        xpid: str
-            X-Payments payment ID
-
-        Returns
-        -------
-        list
         """
+        return self.do_action(action='continue', xpid=xpid)
 
-        return self.do_action("continue", xpid)
-
-    def do_accept(self, xpid):
+    def do_accept(self, xpid: str) -> str:
         """
         Accept payment
-
-        Parameters
-        ----------
-        xpid: str
-            X-Payments payment ID
-
-        Returns
-        -------
-        list
         """
+        return self.do_action(action='accept', xpid=xpid)
 
-        return self.do_action("accept", xpid)
-
-    def do_decline(self, xpid):
+    def do_decline(self, xpid: str) -> str:
         """
         Decline payment
-
-        Parameters
-        ----------
-        xpid: str
-            X-Payments payment ID
-
-        Returns
-        -------
-        list
         """
+        return self.do_action(action='decline', xpid=xpid)
 
-        return self.do_action("decline", xpid)
-
-    def do_get_info(self, xpid):
+    def do_get_info(self, xpid: str) -> str:
         """
         Get detailed payment information
-
-        Parameters
-        ----------
-        xpid: str
-            X-Payments payment ID
-
-        Returns
-        -------
-        list
         """
+        return self.do_action(action='get_info', xpid=xpid)
 
-        return self.do_action("get_info", xpid)
-
-    def do_get_customer_cards(self, customer_id, status="any"):
+    def do_get_customer_cards(self, customer_id: str, status: str = 'any') -> str:
         """
         Get customer's cards
-
-        Parameters
-        ----------
-        customer_id: str
-            X-Payments customer ID
-        status: str
-            Status of the cards, "any" or "active"
-
-        Returns
-        -------
-        list
         """
-
         params = {
             "customerId": customer_id,
             "status": status
         }
+        return self.request.send(controller='customer', action='get_cards', request_data=params)
 
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('customer', 'get_cards', params)
-
-    def do_add_bulk_operation(self, operation, xpids):
+    def do_add_bulk_operation(self, operation: str, xpids: list[str]) -> str:
         """
         Add bulk operation
-
-        Parameters
-        ----------
-        operation: str
-            Bulk operation type
-        xpids: dict
-            List of X-Payments payments ID's
-
-        Returns
-        -------
-        list
         """
-
         params = {
-            'operation': operation,
-            'payments': [],
+            "operation": operation,
+            "payments": [{'xpid': xpid} for xpid in xpids],
         }
+        return self.request.send(controller='bulk_operation', action='add', request_data=params)
 
-        for xpid in xpids:
-            params['payments'].append({'xpid': xpid})
-
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('bulk_operation', 'add', params)
-
-    def do_start_bulk_operation(self, batch_id):
+    def do_start_bulk_operation(self, batch_id: str) -> str:
         """
         Start bulk operation
-
-        Parameters
-        ----------
-        batch_id: str
-            Bulk operation ID
-
-        Returns
-        -------
-        list
         """
+        params = {"batch_id": batch_id}
+        return self.request.send(controller='bulk_operation', action='start', request_data=params)
 
-        params = {'batch_id': batch_id}
-
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('bulk_operation', 'start', params)
-
-    def do_stop_bulk_operation(self, batch_id):
+    def do_stop_bulk_operation(self, batch_id: str) -> str:
         """
         Stop bulk operation
-
-        Parameters
-        ----------
-        batch_id: str
-            Bulk operation ID
-
-        Returns
-        -------
-        list
         """
+        params = {"batch_id": batch_id}
+        return self.request.send(controller='bulk_operation', action='stop', request_data=params)
 
-        params = {'batch_id': batch_id}
-
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('bulk_operation', 'stop', params)
-
-    def do_get_bulk_operation(self, batch_id):
+    def do_get_bulk_operation(self, batch_id: str) -> str:
         """
         Get bulk operation
-
-        Parameters
-        ----------
-        batch_id: str
-            Bulk operation ID
-
-        Returns
-        -------
-        list
         """
+        params = {"batch_id": batch_id}
+        return self.request.send(controller='bulk_operation', action='get', request_data=params)
 
-        params = {'batch_id': batch_id}
-
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('bulk_operation', 'get', params)
-
-    def do_delete_bulk_operation(self, batch_id):
+    def do_delete_bulk_operation(self, batch_id: str) -> str:
         """
         Delete bulk operation
-
-        Parameters
-        ----------
-        batch_id: str
-            Bulk operation ID
-
-        Returns
-        -------
-        list
         """
+        params = {"batch_id": batch_id}
+        return self.request.send(controller='bulk_operation', action='delete', request_data=params)
 
-        params = {'batch_id': batch_id}
-
-        request = Request(self.account, self.api_key, self.secret_key)
-
-        return request.send('bulk_operation', 'delete', params)
-
-    def get_xpayments_web_location(self):
+    def get_xpayments_web_location(self) -> str:
         """
         Get web location of the X-Payments Cloud instance
-
-        Returns
-        -------
-        str
         """
-        if XPAYMENTS_SDK_DEBUG_SERVER_HOST:
-            host = XPAYMENTS_SDK_DEBUG_SERVER_HOST
-        else:
-            host = self.account + "." + self.XP_DOMAIN
-        return "https://" + host + "/"
+        return f"https://{self.request.get_server_host()}/"
 
-    def get_admin_url(self):
+    def get_admin_url(self) -> str:
         """
         Get admin backend URL of the X-Payments Cloud instance
-
-        Returns
-        -------
-        str
         """
+        return f"{self.get_xpayments_web_location()}admin.php"
 
-        return self.get_xpayments_web_location() + "admin.php"
-
-    def get_payment_url(self):
+    def get_payment_url(self) -> str:
         """
         Get payment URL of the X-Payments Cloud instance
-
-        Returns
-        -------
-        str
         """
-
-        return self.get_xpayments_web_location() + "payment.php"
+        return f"{self.get_xpayments_web_location()}payment.php"

@@ -15,9 +15,10 @@ class PaymentRequestParams:
     confId: int | None = None
 
     def __get(self, field: str) -> Any:
-        if type(getattr(self, field)) is bool:
-            return "Y" if getattr(self, field) is True else "N"
-        return getattr(self, field)
+        val = getattr(self, field)
+        if type(val) is bool:
+            return "Y" if val is True else "N"
+        return val
 
     def to_dict(self) -> dict:
         """

@@ -1,5 +1,7 @@
 # X-Payments Cloud SDK for Python
 
+**Work in progress**
+
 When processing online credit card payments, X-Payments works as an intermediary between a shopping cart application or any other API-friendly system on one side and payment gateways and 3D-Secure systems on the other side, implementing the PCI compliant secure layer that works with credit card data and keeps your applications and systems out of the PCI scope.
 
 Refer to the [X-Payments Cloud API](https://xpayments.stoplight.io/docs/server-side-api/) for details.

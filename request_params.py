@@ -35,6 +35,8 @@ class BaseParamsClass:
     def __to_dict_nested(self, field: Any) -> Any:
         if isinstance(field, BaseParamsClass):
             return field.to_dict()
+        if isinstance(field, list):
+            return [self.__to_dict_nested(i) for i in field]
         return field
 
     def _get(self, field: str) -> Any:

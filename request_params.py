@@ -32,6 +32,11 @@ class ScheduleType:
 
 @dataclass
 class BaseParamsClass:
+    def __to_dict_nested(self, field: Any) -> Any:
+        if isinstance(field, BaseParamsClass):
+            return field.to_dict()
+        return field
+
     def _get(self, field: str) -> Any:
         return getattr(self, field)
 
@@ -40,7 +45,7 @@ class BaseParamsClass:
         Converts this dataclass to a dict.
         Optional 'None' params are excluded.
         """
-        return dict((field.name, self._get(field.name))
+        return dict((field.name, self.__to_dict_nested(self._get(field.name)))
                     for field in fields(self) if getattr(self, field.name) is not None)
 
 

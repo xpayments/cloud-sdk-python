@@ -36,7 +36,7 @@ class BaseParamsClass:
         if isinstance(field, BaseParamsClass):
             return field.to_dict()
         if isinstance(field, list):
-            return [self.__to_dict_nested(i) for i in field]
+            return [self.__to_dict_nested(i) for i in field if i is not None]
         return field
 
     def _get(self, field: str) -> Any:

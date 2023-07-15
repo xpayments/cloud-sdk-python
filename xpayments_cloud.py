@@ -7,7 +7,9 @@ from hashlib import sha256
 from exceptions import IllegalArgumentError, JSONProcessingError, UnicodeProcessingError
 from request_params import PaymentRequestParams
 from dotenv import dotenv_values
+from typing import TypeAlias
 
+JSON: TypeAlias = dict[str, 'JSON'] | list['JSON'] | str | int | float | bool | None
 config = dotenv_values(".env")
 
 
@@ -32,7 +34,7 @@ class Request:
         self.secret_key = str(secret_key)
         self.TEST_SERVER_HOST = config.get('TEST_SERVER_HOST', '')
 
-    def send(self, controller: str, action: str, request_data: dict) -> str:
+    def send(self, controller: str, action: str, request_data: dict) -> JSON:
         """
         Send API request to X-Payments Cloud
         """
@@ -49,7 +51,6 @@ class Request:
             raise HTTPError
         response.raise_for_status()
         try:
-            # print(response.json())
             return response.json()
         except JSONDecodeError as ex:
             raise JSONProcessingError(ex.msg)
@@ -106,19 +107,19 @@ class Client:
         self.secret_key = str(secret_key)
         self.request = Request(account=self.account, api_key=self.api_key, secret_key=self.secret_key)
 
-    def do_pay(self, params: PaymentRequestParams) -> str:
+    def do_pay(self, params: PaymentRequestParams) -> JSON:
         """
         Process payment
         """
         return self.request.send(controller='payment', action='pay', request_data=params.to_dict())
 
-    def do_tokenize_card(self, params: PaymentRequestParams) -> str:
+    def do_tokenize_card(self, params: PaymentRequestParams) -> JSON:
         """
         Tokenize card
         """
         return self.request.send(controller='payment', action='tokenize_card', request_data=params.to_dict())
 
-    def do_rebill(self, xpid: str, ref_id: str, customer_id: str, cart: list, callback_url: str) -> str:
+    def do_rebill(self, xpid: str, ref_id: str, customer_id: str, cart: list, callback_url: str) -> JSON:
         """
         Rebill payment (process payment using the saved card)
         """
@@ -131,7 +132,7 @@ class Client:
         }
         return self.request.send(controller='payment', action='rebill', request_data=params)
 
-    def do_action(self, action: str, xpid: str, amount: int | None = None) -> str:
+    def do_action(self, action: str, xpid: str, amount: int | None = None) -> JSON:
         """
         Execute secondary payment action
         """
@@ -140,49 +141,49 @@ class Client:
             params.amount = amount
         return self.request.send(controller='payment', action=action, request_data=params)
 
-    def do_capture(self, xpid: str, amount: int) -> str:
+    def do_capture(self, xpid: str, amount: int) -> JSON:
         """
         Capture payment
         """
         return self.do_action(action='capture', xpid=xpid, amount=amount)
 
-    def do_void(self, xpid: str, amount: int) -> str:
+    def do_void(self, xpid: str, amount: int) -> JSON:
         """
         Void payment
         """
         return self.do_action(action='void', xpid=xpid, amount=amount)
 
-    def do_refund(self, xpid: str, amount: int) -> str:
+    def do_refund(self, xpid: str, amount: int) -> JSON:
         """
         Refund payment
         """
         return self.do_action(action='refund', xpid=xpid, amount=amount)
 
-    def do_continue(self, xpid: str) -> str:
+    def do_continue(self, xpid: str) -> JSON:
         """
         Continue payment
         """
         return self.do_action(action='continue', xpid=xpid)
 
-    def do_accept(self, xpid: str) -> str:
+    def do_accept(self, xpid: str) -> JSON:
         """
         Accept payment
         """
         return self.do_action(action='accept', xpid=xpid)
 
-    def do_decline(self, xpid: str) -> str:
+    def do_decline(self, xpid: str) -> JSON:
         """
         Decline payment
         """
         return self.do_action(action='decline', xpid=xpid)
 
-    def do_get_info(self, xpid: str) -> str:
+    def do_get_info(self, xpid: str) -> JSON:
         """
         Get detailed payment information
         """
         return self.do_action(action='get_info', xpid=xpid)
 
-    def do_get_customer_cards(self, customer_id: str, status: str = 'any') -> str:
+    def do_get_customer_cards(self, customer_id: str, status: str = 'any') -> JSON:
         """
         Get customer's cards
         """
@@ -192,7 +193,7 @@ class Client:
         }
         return self.request.send(controller='customer', action='get_cards', request_data=params)
 
-    def do_add_bulk_operation(self, operation: str, xpids: list[str]) -> str:
+    def do_add_bulk_operation(self, operation: str, xpids: list[str]) -> JSON:
         """
         Add bulk operation
         """
@@ -202,28 +203,28 @@ class Client:
         }
         return self.request.send(controller='bulk_operation', action='add', request_data=params)
 
-    def do_start_bulk_operation(self, batch_id: str) -> str:
+    def do_start_bulk_operation(self, batch_id: str) -> JSON:
         """
         Start bulk operation
         """
         params = {"batch_id": batch_id}
         return self.request.send(controller='bulk_operation', action='start', request_data=params)
 
-    def do_stop_bulk_operation(self, batch_id: str) -> str:
+    def do_stop_bulk_operation(self, batch_id: str) -> JSON:
         """
         Stop bulk operation
         """
         params = {"batch_id": batch_id}
         return self.request.send(controller='bulk_operation', action='stop', request_data=params)
 
-    def do_get_bulk_operation(self, batch_id: str) -> str:
+    def do_get_bulk_operation(self, batch_id: str) -> JSON:
         """
         Get bulk operation
         """
         params = {"batch_id": batch_id}
         return self.request.send(controller='bulk_operation', action='get', request_data=params)
 
-    def do_delete_bulk_operation(self, batch_id: str) -> str:
+    def do_delete_bulk_operation(self, batch_id: str) -> JSON:
         """
         Delete bulk operation
         """

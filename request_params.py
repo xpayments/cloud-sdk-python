@@ -9,8 +9,9 @@ class PaymentRequestParams:
     customerId: str
     returnUrl: str
     callbackUrl: str
-    cart: list
+    cart: dict
     forceSaveCard: bool | None = None
+    # Deprecated, not supported by the API
     forceTransactionType: str | None = None
     confId: int | None = None
 

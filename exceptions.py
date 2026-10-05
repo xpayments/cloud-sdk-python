@@ -8,3 +8,7 @@ class JSONProcessingError(ValueError):
 
 class UnicodeProcessingError(ValueError):
     pass
+
+
+class InvalidResponseError(ValueError):
+    pass

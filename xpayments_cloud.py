@@ -182,7 +182,7 @@ class Client:
     def do_get_info(self, xpid: str, refresh: bool = False) -> dict:
         """
         Get detailed payment information.
-        With refresh=True the payment gateway is asked for the current state first (if the gateway supports it)
+        With refresh=True the payment data is refreshed from the payment gateway first
         """
         return self.do_action(action='get_info', xpid=xpid, extra={"refresh": 1} if refresh else None)
 
